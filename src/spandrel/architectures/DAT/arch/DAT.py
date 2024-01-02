@@ -887,11 +887,6 @@ class UpsampleOneStep(nn.Sequential):
         m.append(nn.PixelShuffle(scale))
         super().__init__(*m)
 
-    def flops(self):
-        h, w = self.input_resolution
-        flops = h * w * self.num_feat * 3 * 9
-        return flops
-
 
 class DAT(nn.Module):
     """Dual Aggregation Transformer

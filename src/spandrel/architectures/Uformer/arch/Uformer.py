@@ -46,17 +46,6 @@ class FastLeFF(nn.Module):
 
         return x
 
-    def flops(self, H, W):
-        flops = 0
-        # fc1
-        flops += H * W * self.dim * self.hidden_dim
-        # dwconv
-        flops += H * W * self.hidden_dim * 3 * 3
-        # fc2
-        flops += H * W * self.hidden_dim * self.dim
-        print("LeFF:{%.2f}" % (flops / 1e9))
-        return flops
-
 
 def conv(in_channels, out_channels, kernel_size, bias=False, stride=1):
     return nn.Conv2d(
@@ -112,13 +101,6 @@ class ConvBlock(nn.Module):
         out2 = self.conv11(x)
         out = out1 + out2
         return out
-
-    def flops(self, H, W):
-        flops = (
-            H * W * self.in_channel * self.out_channel * (3 * 3 + 1)
-            + H * W * self.out_channel * self.out_channel * 3 * 3
-        )
-        return flops
 
 
 class UNet(nn.Module):
@@ -190,31 +172,6 @@ class UNet(nn.Module):
 
         return out
 
-    def flops(self, H, W):
-        flops = 0
-        flops += self.ConvBlock1.flops(H, W)
-        flops += H / 2 * W / 2 * self.dim * self.dim * 4 * 4
-        flops += self.ConvBlock2.flops(H / 2, W / 2)
-        flops += H / 4 * W / 4 * self.dim * 2 * self.dim * 2 * 4 * 4
-        flops += self.ConvBlock3.flops(H / 4, W / 4)
-        flops += H / 8 * W / 8 * self.dim * 4 * self.dim * 4 * 4 * 4
-        flops += self.ConvBlock4.flops(H / 8, W / 8)
-        flops += H / 16 * W / 16 * self.dim * 8 * self.dim * 8 * 4 * 4
-
-        flops += self.ConvBlock5.flops(H / 16, W / 16)
-
-        flops += H / 8 * W / 8 * self.dim * 16 * self.dim * 8 * 2 * 2
-        flops += self.ConvBlock6.flops(H / 8, W / 8)
-        flops += H / 4 * W / 4 * self.dim * 8 * self.dim * 4 * 2 * 2
-        flops += self.ConvBlock7.flops(H / 4, W / 4)
-        flops += H / 2 * W / 2 * self.dim * 4 * self.dim * 2 * 2 * 2
-        flops += self.ConvBlock8.flops(H / 2, W / 2)
-        flops += H * W * self.dim * 2 * self.dim * 2 * 2
-        flops += self.ConvBlock9.flops(H, W)
-
-        flops += H * W * self.dim * 3 * 3 * 3
-        return flops
-
 
 class LPU(nn.Module):
     """
@@ -246,12 +203,6 @@ class LPU(nn.Module):
             (self.depthwise(x) + x).flatten(2).transpose(1, 2).contiguous()
         )  # B H*W C
         return result
-
-    def flops(self, H, W):
-        flops = 0
-        # conv
-        flops += H * W * self.out_channels * 3 * 3
-        return flops
 
 
 #########################################
@@ -301,12 +252,6 @@ class SELayer(nn.Module):
         x = torch.transpose(x, 1, 2)  # [B, N, C]
         return x
 
-    def flops(self):
-        flops = 0
-        flops += self.channel * self.channel / self.reduction * 2
-
-        return flops
-
 
 class eca_layer(nn.Module):
     """Constructs a ECA module.
@@ -336,12 +281,6 @@ class eca_layer(nn.Module):
         y = self.sigmoid(y)
 
         return x * y.expand_as(x)
-
-    def flops(self):
-        flops = 0
-        flops += self.channel * self.channel * self.k_size
-
-        return flops
 
 
 class eca_layer_1d(nn.Module):
@@ -373,12 +312,6 @@ class eca_layer_1d(nn.Module):
         y = self.sigmoid(y)
 
         return x * y.expand_as(x)
-
-    def flops(self):
-        flops = 0
-        flops += self.channel * self.channel * self.k_size
-
-        return flops
 
 
 class SepConv2d(torch.nn.Module):
@@ -414,13 +347,6 @@ class SepConv2d(torch.nn.Module):
         x = self.act_layer(x)
         x = self.pointwise(x)
         return x
-
-    def flops(self, HW):
-        flops = 0
-        flops += HW * self.in_channels * self.kernel_size**2 / self.stride**2
-        flops += HW * self.in_channels * self.out_channels
-        print("SeqConv2d:{%.2f}" % (flops / 1e9))
-        return flops
 
 
 ######## Embedding for q,k,v ########
@@ -465,14 +391,6 @@ class ConvProjection(nn.Module):
         v = rearrange(v, "b (h d) l w -> b h (l w) d", h=h)
         return q, k, v
 
-    def flops(self, q_L, kv_L=None):
-        kv_L = kv_L or q_L
-        flops = 0
-        flops += self.to_q.flops(q_L)
-        flops += self.to_k.flops(kv_L)
-        flops += self.to_v.flops(kv_L)
-        return flops
-
 
 class LinearProjection(nn.Module):
     def __init__(self, dim, heads=8, dim_head=64, dropout=0.0, bias=True):
@@ -504,11 +422,6 @@ class LinearProjection(nn.Module):
         q = q[0]
         k, v = kv[0], kv[1]
         return q, k, v
-
-    def flops(self, q_L, kv_L=None):
-        kv_L = kv_L or q_L
-        flops = q_L * self.dim * self.inner_dim + kv_L * self.dim * self.inner_dim * 2
-        return flops
 
 
 #########################################
@@ -611,27 +524,6 @@ class WindowAttention(nn.Module):
     def extra_repr(self) -> str:
         return f"dim={self.dim}, win_size={self.win_size}, num_heads={self.num_heads}"
 
-    def flops(self, H, W):
-        # calculate flops for 1 window with token length of N
-        # print(N, self.dim)
-        flops = 0
-        N = self.win_size[0] * self.win_size[1]
-        nW = H * W / N
-        # qkv = self.qkv(x)
-        # flops += N * self.dim * 3 * self.dim
-        flops += self.qkv.flops(H * W, H * W)
-
-        # attn = (q @ k.transpose(-2, -1))
-
-        flops += nW * self.num_heads * N * (self.dim // self.num_heads) * N
-        #  x = (attn @ v)
-        flops += nW * self.num_heads * N * N * (self.dim // self.num_heads)
-
-        # x = self.proj(x)
-        flops += nW * N * self.dim * self.dim
-        print("W-MSA:{%.2f}" % (flops / 1e9))
-        return flops
-
 
 ########### self-attention #############
 class Attention(nn.Module):
@@ -695,26 +587,6 @@ class Attention(nn.Module):
     def extra_repr(self) -> str:
         return f"dim={self.dim}, num_heads={self.num_heads}"
 
-    def flops(self, q_num, kv_num):
-        # calculate flops for 1 window with token length of N
-        # print(N, self.dim)
-        flops = 0
-        # N = self.win_size[0]*self.win_size[1]
-        # nW = H*W/N
-        # qkv = self.qkv(x)
-        # flops += N * self.dim * 3 * self.dim
-        flops += self.qkv.flops(q_num, kv_num)
-        # attn = (q @ k.transpose(-2, -1))
-
-        flops += self.num_heads * q_num * (self.dim // self.num_heads) * kv_num
-        #  x = (attn @ v)
-        flops += self.num_heads * q_num * (self.dim // self.num_heads) * kv_num
-
-        # x = self.proj(x)
-        flops += q_num * self.dim * self.dim
-        print("MCA:{%.2f}" % (flops / 1e9))
-        return flops
-
 
 #########################################
 ########### feed-forward network #############
@@ -745,15 +617,6 @@ class Mlp(nn.Module):
         x = self.fc2(x)
         x = self.drop(x)
         return x
-
-    def flops(self, H, W):
-        flops = 0
-        # fc1
-        flops += H * W * self.in_features * self.hidden_features
-        # fc2
-        flops += H * W * self.hidden_features * self.out_features
-        print("MLP:{%.2f}" % (flops / 1e9))
-        return flops
 
 
 class LeFF(nn.Module):
@@ -798,20 +661,6 @@ class LeFF(nn.Module):
         x = self.eca(x)
 
         return x
-
-    def flops(self, H, W):
-        flops = 0
-        # fc1
-        flops += H * W * self.dim * self.hidden_dim
-        # dwconv
-        flops += H * W * self.hidden_dim * 3 * 3
-        # fc2
-        flops += H * W * self.hidden_dim * self.dim
-        print("LeFF:{%.2f}" % (flops / 1e9))
-        # eca
-        if hasattr(self.eca, "flops"):
-            flops += self.eca.flops()
-        return flops
 
 
 #########################################
@@ -879,13 +728,6 @@ class Downsample(nn.Module):
         out = self.conv(x).flatten(2).transpose(1, 2).contiguous()  # B H*W C
         return out
 
-    def flops(self, H, W):
-        flops = 0
-        # conv
-        flops += H / 2 * W / 2 * self.in_channel * self.out_channel * 4 * 4
-        print("Downsample:{%.2f}" % (flops / 1e9))
-        return flops
-
 
 # Upsample Block
 class Upsample(nn.Module):
@@ -904,13 +746,6 @@ class Upsample(nn.Module):
         x = x.transpose(1, 2).contiguous().view(B, C, H, W)
         out = self.deconv(x).flatten(2).transpose(1, 2).contiguous()  # B H*W C
         return out
-
-    def flops(self, H, W):
-        flops = 0
-        # conv
-        flops += H * 2 * W * 2 * self.in_channel * self.out_channel * 2 * 2
-        print("Upsample:{%.2f}" % (flops / 1e9))
-        return flops
 
 
 # Input Projection
@@ -947,16 +782,6 @@ class InputProj(nn.Module):
         if self.norm is not None:
             x = self.norm(x)
         return x
-
-    def flops(self, H, W):
-        flops = 0
-        # conv
-        flops += H * W * self.in_channel * self.out_channel * 3 * 3
-
-        if self.norm is not None:
-            flops += H * W * self.out_channel
-        print("Input_proj:{%.2f}" % (flops / 1e9))
-        return flops
 
 
 # Output Projection
@@ -998,16 +823,6 @@ class OutputProj(nn.Module):
         if self.norm is not None:
             x = self.norm(x)
         return x
-
-    def flops(self, H, W):
-        flops = 0
-        # conv
-        flops += H * W * self.in_channel * self.out_channel * 3 * 3
-
-        if self.norm is not None:
-            flops += H * W * self.out_channel
-        print("Output_proj:{%.2f}" % (flops / 1e9))
-        return flops
 
 
 #########################################
@@ -1223,25 +1038,6 @@ class LeWinTransformerBlock(nn.Module):
         del attn_mask
         return x
 
-    def flops(self):
-        flops = 0
-        H, W = self.input_resolution
-
-        if self.cross_modulator is not None:
-            flops += self.dim * H * W
-            flops += self.cross_attn.flops(H * W, self.win_size * self.win_size)
-
-        # norm1
-        flops += self.dim * H * W
-        # W-MSA/SW-MSA
-        flops += self.attn.flops(H, W)
-        # norm2
-        flops += self.dim * H * W
-        # mlp
-        flops += self.mlp.flops(H, W)
-        # print("LeWin:{%.2f}"%(flops/1e9))
-        return flops
-
 
 #########################################
 ########### Basic layer of Uformer ################
@@ -1337,12 +1133,6 @@ class BasicUformerLayer(nn.Module):
             else:
                 x = blk(x, mask)
         return x
-
-    def flops(self):
-        flops = 0
-        for blk in self.blocks:
-            flops += blk.flops()
-        return flops
 
 
 class Uformer(nn.Module):
@@ -1662,46 +1452,3 @@ class Uformer(nn.Module):
         # Output Projection
         y = self.output_proj(deconv3)
         return x + y if self.dd_in == 3 else y
-
-    def flops(self):
-        flops = 0
-        # Input Projection
-        flops += self.input_proj.flops(self.reso, self.reso)
-        # Encoder
-        flops += self.encoderlayer_0.flops() + self.dowsample_0.flops(
-            self.reso, self.reso
-        )
-        flops += self.encoderlayer_1.flops() + self.dowsample_1.flops(
-            self.reso // 2, self.reso // 2
-        )
-        flops += self.encoderlayer_2.flops() + self.dowsample_2.flops(
-            self.reso // 2**2, self.reso // 2**2
-        )
-        flops += self.encoderlayer_3.flops() + self.dowsample_3.flops(
-            self.reso // 2**3, self.reso // 2**3
-        )
-
-        # Bottleneck
-        flops += self.conv.flops()
-
-        # Decoder
-        flops += (
-            self.upsample_0.flops(self.reso // 2**4, self.reso // 2**4)
-            + self.decoderlayer_0.flops()
-        )
-        flops += (
-            self.upsample_1.flops(self.reso // 2**3, self.reso // 2**3)
-            + self.decoderlayer_1.flops()
-        )
-        flops += (
-            self.upsample_2.flops(self.reso // 2**2, self.reso // 2**2)
-            + self.decoderlayer_2.flops()
-        )
-        flops += (
-            self.upsample_3.flops(self.reso // 2, self.reso // 2)
-            + self.decoderlayer_3.flops()
-        )
-
-        # Output Projection
-        flops += self.output_proj.flops(self.reso, self.reso)
-        return flops

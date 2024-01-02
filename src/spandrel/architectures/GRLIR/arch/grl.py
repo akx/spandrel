@@ -178,9 +178,6 @@ class TransformerStage(nn.Module):
 
         return res + x
 
-    def flops(self):
-        pass
-
 
 class GRL(nn.Module):
     r"""Image restoration transformer with global, non-local, and local connections
@@ -559,9 +556,6 @@ class GRL(nn.Module):
         x = x / self.img_range + self.mean
 
         return x[:, :, : H * self.upscale, : W * self.upscale]
-
-    def flops(self):
-        pass
 
     def convert_checkpoint(self, state_dict):
         for k in list(state_dict.keys()):

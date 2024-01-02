@@ -179,9 +179,6 @@ class WindowAttention(Attention):
             f"pretrained_window_size={self.pretrained_window_size}, num_heads={self.num_heads}"
         )
 
-    def flops(self, N):
-        pass
-
 
 class AnchorStripeAttention(Attention):
     r"""Stripe attention
@@ -284,9 +281,6 @@ class AnchorStripeAttention(Attention):
             f"stripe_size={self.stripe_size}, stripe_groups={self.stripe_groups}, stripe_shift={self.stripe_shift}, "
             f"pretrained_stripe_size={self.pretrained_stripe_size}, num_heads={self.num_heads}, anchor_window_down_factor={self.anchor_window_down_factor}"
         )
-
-    def flops(self, N):
-        pass
 
 
 class MixedAttention(nn.Module):
@@ -407,9 +401,6 @@ class MixedAttention(nn.Module):
 
     def extra_repr(self) -> str:
         return f"dim={self.dim}, input_resolution={self.input_resolution}"
-
-    def flops(self, N):
-        pass
 
 
 class EfficientMixAttnTransformerBlock(nn.Module):
@@ -571,6 +562,3 @@ class EfficientMixAttnTransformerBlock(nn.Module):
             f"stripe_size={self.stripe_size}, stripe_groups={self.stripe_groups}, stripe_shift={self.stripe_shift}, self.stripe_type={self.stripe_type}, "
             f"mlp_ratio={self.mlp_ratio}, res_scale={self.res_scale}"
         )
-
-    def flops(self):
-        pass
